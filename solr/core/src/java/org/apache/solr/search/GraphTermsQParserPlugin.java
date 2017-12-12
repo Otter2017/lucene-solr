@@ -50,6 +50,7 @@ import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.MatchNoDocsQuery;
 import org.apache.lucene.search.Query;
+import org.apache.lucene.search.ScoreMode;
 import org.apache.lucene.search.Scorer;
 import org.apache.lucene.search.Weight;
 import org.apache.lucene.util.ArrayUtil;
@@ -249,7 +250,7 @@ public class GraphTermsQParserPlugin extends QParserPlugin {
     }
 
     @Override
-    public Weight createWeight(IndexSearcher searcher, boolean needsScores, float boost) throws IOException {
+    public Weight createWeight(IndexSearcher searcher, ScoreMode scoreMode, float boost) throws IOException {
 
       List<TermContext> finalContexts = new ArrayList();
       List<Term> finalTerms = new ArrayList();
@@ -330,6 +331,12 @@ public class GraphTermsQParserPlugin extends QParserPlugin {
             return scorer(weightOrBitSet.set);
           }
         }
+
+        @Override
+        public boolean isCacheable(LeafReaderContext ctx) {
+          return true;
+        }
+
       };
     }
 
@@ -602,7 +609,7 @@ abstract class PointSetQuery extends Query implements DocSetProducer {
 
 
   @Override
-  public final Weight createWeight(IndexSearcher searcher, boolean needsScores, float boost) throws IOException {
+  public final Weight createWeight(IndexSearcher searcher, ScoreMode scoreMode, float boost) throws IOException {
     return new ConstantScoreWeight(this, boost) {
       Filter filter;
 
@@ -623,6 +630,11 @@ abstract class PointSetQuery extends Query implements DocSetProducer {
           return null;
         }
         return new ConstantScoreScorer(this, score(), readerSetIterator);
+      }
+
+      @Override
+      public boolean isCacheable(LeafReaderContext ctx) {
+        return true;
       }
     };
   }

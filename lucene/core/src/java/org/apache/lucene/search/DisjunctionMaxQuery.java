@@ -97,15 +97,15 @@ public final class DisjunctionMaxQuery extends Query implements Iterable<Query> 
 
     /** The Weights for our subqueries, in 1-1 correspondence with disjuncts */
     protected final ArrayList<Weight> weights = new ArrayList<>();  // The Weight's for our subqueries, in 1-1 correspondence with disjuncts
-    private final boolean needsScores;
+    private final ScoreMode scoreMode;
 
     /** Construct the Weight for this Query searched by searcher.  Recursively construct subquery weights. */
-    public DisjunctionMaxWeight(IndexSearcher searcher, boolean needsScores, float boost) throws IOException {
+    public DisjunctionMaxWeight(IndexSearcher searcher, ScoreMode scoreMode, float boost) throws IOException {
       super(DisjunctionMaxQuery.this);
       for (Query disjunctQuery : disjuncts) {
-        weights.add(searcher.createWeight(disjunctQuery, needsScores, boost));
+        weights.add(searcher.createWeight(disjunctQuery, scoreMode, boost));
       }
-      this.needsScores = needsScores;
+      this.scoreMode = scoreMode;
     }
 
     @Override
@@ -133,15 +133,31 @@ public final class DisjunctionMaxQuery extends Query implements Iterable<Query> 
         // only one sub-scorer in this segment
         return scorers.get(0);
       } else {
-        return new DisjunctionMaxScorer(this, tieBreakerMultiplier, scorers, needsScores);
+        return new DisjunctionMaxScorer(this, tieBreakerMultiplier, scorers, scoreMode.needsScores());
       }
+    }
+
+    @Override
+    public boolean isCacheable(LeafReaderContext ctx) {
+      if (weights.size() > TermInSetQuery.BOOLEAN_REWRITE_TERM_COUNT_THRESHOLD) {
+        // Disallow caching large dismax queries to not encourage users
+        // to build large dismax queries as a workaround to the fact that
+        // we disallow caching large TermInSetQueries.
+        return false;
+      }
+      for (Weight w : weights) {
+        if (w.isCacheable(ctx) == false)
+          return false;
+      }
+      return true;
     }
 
     /** Explain the score we computed for doc */
     @Override
     public Explanation explain(LeafReaderContext context, int doc) throws IOException {
       boolean match = false;
-      float max = Float.NEGATIVE_INFINITY, sum = 0.0f;
+      float max = Float.NEGATIVE_INFINITY;
+      double sum = 0;
       List<Explanation> subs = new ArrayList<>();
       for (Weight wt : weights) {
         Explanation e = wt.explain(context, doc);
@@ -153,7 +169,7 @@ public final class DisjunctionMaxQuery extends Query implements Iterable<Query> 
         }
       }
       if (match) {
-        final float score = max + (sum - max) * tieBreakerMultiplier;
+        final float score = (float) (max + (sum - max) * tieBreakerMultiplier);
         final String desc = tieBreakerMultiplier == 0.0f ? "max of:" : "max plus " + tieBreakerMultiplier + " times others of:";
         return Explanation.match(score, desc, subs);
       } else {
@@ -165,8 +181,8 @@ public final class DisjunctionMaxQuery extends Query implements Iterable<Query> 
 
   /** Create the Weight used to score us */
   @Override
-  public Weight createWeight(IndexSearcher searcher, boolean needsScores, float boost) throws IOException {
-    return new DisjunctionMaxWeight(searcher, needsScores, boost);
+  public Weight createWeight(IndexSearcher searcher, ScoreMode scoreMode, float boost) throws IOException {
+    return new DisjunctionMaxWeight(searcher, scoreMode, boost);
   }
 
   /** Optimize our representation and our subqueries representations

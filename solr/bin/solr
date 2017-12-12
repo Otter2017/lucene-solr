@@ -729,7 +729,7 @@ function stop_solr() {
 
   DIR="$1"
   SOLR_PORT="$2"
-  STOP_PORT=`expr $SOLR_PORT - 1000`
+  STOP_PORT="${STOP_PORT:-$(expr $SOLR_PORT - 1000)}"
   STOP_KEY="$3"
   SOLR_PID="$4"
 
@@ -1919,6 +1919,10 @@ function launch_solr() {
     GC_TUNE=($GC_TUNE)
   fi
 
+  if [ -n "$SOLR_WAIT_FOR_ZK" ]; then
+    WAIT_FOR_ZK_PROP="-DwaitForZk=$SOLR_WAIT_FOR_ZK"
+    SOLR_OPTS+=($WAIT_FOR_ZK_PROP)
+  fi
 
   # If SSL-related system props are set, add them to SOLR_OPTS
   if [ "$SOLR_SSL_ENABLED" ]; then

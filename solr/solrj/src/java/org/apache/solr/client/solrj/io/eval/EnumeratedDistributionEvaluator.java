@@ -17,7 +17,6 @@
 package org.apache.solr.client.solrj.io.eval;
 
 import java.io.IOException;
-import java.math.BigDecimal;
 import java.util.List;
 import java.util.Locale;
 
@@ -25,7 +24,7 @@ import org.apache.commons.math3.distribution.EnumeratedIntegerDistribution;
 import org.apache.solr.client.solrj.io.stream.expr.StreamExpression;
 import org.apache.solr.client.solrj.io.stream.expr.StreamFactory;
 
-public class EnumeratedDistributionEvaluator extends RecursiveNumericEvaluator implements OneValueWorker {
+public class EnumeratedDistributionEvaluator extends RecursiveNumericEvaluator implements ManyValueWorker {
 
   private static final long serialVersionUID = 1;
 
@@ -34,12 +33,21 @@ public class EnumeratedDistributionEvaluator extends RecursiveNumericEvaluator i
   }
 
   @Override
-  public Object doWork(Object first) throws IOException{
-    if(null == first){
+  public Object doWork(Object... values) throws IOException{
+    if(values.length == 0){
       throw new IOException(String.format(Locale.ROOT,"Invalid expression %s - null found for the first value",toExpression(constructingFactory)));
     }
 
-     int[] samples = ((List)first).stream().mapToInt(value -> ((BigDecimal) value).intValue()).toArray();
-     return new EnumeratedIntegerDistribution(samples);
+    if(values.length == 1) {
+      List<Number> first = (List<Number>)values[0];
+      int[] samples = ((List) first).stream().mapToInt(value -> ((Number) value).intValue()).toArray();
+      return new EnumeratedIntegerDistribution(samples);
+    } else {
+      List<Number> first = (List<Number>)values[0];
+      List<Number> second = (List<Number>)values[1];
+      int[] singletons = ((List) first).stream().mapToInt(value -> ((Number) value).intValue()).toArray();
+      double[] probs = ((List) second).stream().mapToDouble(value -> ((Number) value).doubleValue()).toArray();
+      return new EnumeratedIntegerDistribution(singletons, probs);
+    }
   }
 }

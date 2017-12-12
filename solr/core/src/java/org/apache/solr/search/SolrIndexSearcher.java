@@ -367,7 +367,15 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable, SolrI
   }
 
   public CollectionStatistics localCollectionStatistics(String field) throws IOException {
-    return super.collectionStatistics(field);
+    // Could call super.collectionStatistics(field); but we can use a cached MultiTerms
+    assert field != null;
+    // SlowAtomicReader has a cache of MultiTerms
+    Terms terms = getSlowAtomicReader().terms(field);
+    if (terms == null) {
+      return null;
+    }
+    return new CollectionStatistics(field, reader.maxDoc(),
+        terms.getDocCount(), terms.getSumTotalTermFreq(), terms.getSumDocFreq());
   }
 
   public boolean isCachingEnabled() {
@@ -1051,7 +1059,7 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable, SolrI
       List<Weight> weights = new ArrayList<>(notCached.size());
       for (Query q : notCached) {
         Query qq = QueryUtils.makeQueryable(q);
-        weights.add(createNormalizedWeight(qq, true));
+        weights.add(createNormalizedWeight(qq, ScoreMode.COMPLETE));
       }
       pf.filter = new FilterImpl(answer, weights);
       pf.hasDeletedDocs = (answer == null);  // if all clauses were uncached, the resulting filter may match deleted docs
@@ -1510,7 +1518,7 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable, SolrI
       // ... see comments in populateNextCursorMarkFromTopDocs for cache issues (SOLR-5595)
       final boolean fillFields = (null != cursor);
       final FieldDoc searchAfter = (null != cursor ? cursor.getSearchAfterFieldDoc() : null);
-      return TopFieldCollector.create(weightedSort, len, searchAfter, fillFields, needScores, needScores);
+      return TopFieldCollector.create(weightedSort, len, searchAfter, fillFields, needScores, needScores, true);
     }
   }
 
@@ -1549,8 +1557,8 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable, SolrI
           }
 
           @Override
-          public boolean needsScores() {
-            return false;
+          public ScoreMode scoreMode() {
+            return ScoreMode.COMPLETE_NO_SCORES;
           }
         };
       } else {
@@ -1570,8 +1578,8 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable, SolrI
           }
 
           @Override
-          public boolean needsScores() {
-            return true;
+          public ScoreMode scoreMode() {
+            return ScoreMode.COMPLETE;
           }
         };
       }
@@ -1659,8 +1667,8 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable, SolrI
           }
 
           @Override
-          public boolean needsScores() {
-            return true;
+          public ScoreMode scoreMode() {
+            return ScoreMode.COMPLETE;
           }
         };
 

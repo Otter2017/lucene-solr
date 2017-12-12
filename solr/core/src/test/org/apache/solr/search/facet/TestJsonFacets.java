@@ -42,6 +42,10 @@ import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
+// Related tests:
+//   TestCloudJSONFacetJoinDomain for random field faceting tests with domain modifications
+//   TestJsonFacetRefinement for refinement tests
+
 @LuceneTestCase.SuppressCodecs({"Lucene3x","Lucene40","Lucene41","Lucene42","Lucene45","Appending"})
 public class TestJsonFacets extends SolrTestCaseHS {
 
@@ -206,6 +210,28 @@ public class TestJsonFacets extends SolrTestCaseHS {
     client.commit();
     client.add(sdoc("id", "6", "cat_s", "B", "where_s", "NY", "num_d", "-5", "num_i", "-5"),null);
     client.commit();
+  }
+
+  @Test
+  public void testRepeatedNumerics() throws Exception {
+    Client client = Client.localClient();
+    String field = "num_is"; // docValues of multi-valued points field can contain duplicate values... make sure they don't mess up our counts.
+    client.add(sdoc("id", "1", "cat_s", "A", "where_s", "NY", "num_d", "4", "num_i", "2", "val_b", "true", "sparse_s", "one", field,"0", field,"0"), null);
+    client.commit();
+
+    client.testJQ(params("q", "id:1", "field", field
+        , "json.facet", "{" +
+            "f1:{terms:${field}}" +
+            ",f2:'hll(${field})'" +
+            ",f3:{type:range, field:${field}, start:0, end:1, gap:1}" +
+            "}"
+        )
+        , "facets=={count:1, " +
+            "f1:{buckets:[{val:0, count:1}]}" +
+            ",f2:1" +
+            ",f3:{buckets:[{val:0, count:1}]}" +
+            "}"
+    );
   }
 
   public void testDomainJoinSelf() throws Exception {
@@ -565,6 +591,9 @@ public class TestJsonFacets extends SolrTestCaseHS {
     iclient.commit();
     client.commit();
 
+
+
+
     // test for presence of debugging info
     ModifiableSolrParams debugP = params(p);
     debugP.set("debugQuery","true");
@@ -703,7 +732,7 @@ public class TestJsonFacets extends SolrTestCaseHS {
 
     // Same thing for dates
     // test min/max of string field
-    if (date.equals("date_dt") || date.equals("date_dtd")) {  // supports only single valued currently...
+    if (date.equals("date_dt") || date.equals("date_dtd")) {  // supports only single valued currently... see SOLR-11706
       client.testJQ(params(p, "q", "*:*"
           , "json.facet", "{" +
               " f3:{${terms}  type:field, field:${num_is}, facet:{a:'min(${date})'}, sort:'a desc' }" +
@@ -1010,6 +1039,30 @@ public class TestJsonFacets extends SolrTestCaseHS {
             ",between:{count:2,x:-2.0, ny:{count:1}}" +
             " } }"
     );
+
+    // range facet with stats on string fields
+    client.testJQ(params(p, "q", "*:*"
+        , "json.facet", "{f:{type:range, field:${num_d}, start:-5, end:10, gap:5, other:all,   facet:{ wn:'unique(${where_s})',wh:'hll(${where_s})'     }   }}"
+        )
+        , "facets=={count:6, f:{buckets:[ {val:-5.0,count:1,wn:1,wh:1}, {val:0.0,count:2,wn:2,wh:2}, {val:5.0,count:0}]" +
+            " ,before:{count:1,wn:1,wh:1}" +
+            " ,after:{count:1,wn:1,wh:1} " +
+            " ,between:{count:3,wn:2,wh:2} " +
+            " } }"
+    );
+
+    if (where_s.equals("where_s") || where_s.equals("where_sd")) {  // min/max only supports only single valued currently... see SOLR-11706
+      client.testJQ(params(p, "q", "*:*"
+          , "json.facet", "{f:{type:range, field:${num_d}, start:-5, end:10, gap:5, other:all,   facet:{ wmin:'min(${where_s})', wmax:'max(${where_s})'    }   }}"
+          )
+          , "facets=={count:6, f:{buckets:[ {val:-5.0,count:1,wmin:NY,wmax:NY}, {val:0.0,count:2,wmin:NJ,wmax:NY}, {val:5.0,count:0}]" +
+              " ,before:{count:1,wmin:NJ,wmax:NJ}" +
+              " ,after:{count:1,wmin:NJ,wmax:NJ} " +
+              " ,between:{count:3,wmin:NJ,wmax:NY} " +
+              " } }"
+      );
+    }
+
 
 
     // stats at top level

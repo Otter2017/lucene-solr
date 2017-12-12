@@ -110,9 +110,9 @@ public final class IndexOrDocValuesQuery extends Query {
   }
 
   @Override
-  public Weight createWeight(IndexSearcher searcher, boolean needsScores, float boost) throws IOException {
-    final Weight indexWeight = indexQuery.createWeight(searcher, needsScores, boost);
-    final Weight dvWeight = dvQuery.createWeight(searcher, needsScores, boost);
+  public Weight createWeight(IndexSearcher searcher, ScoreMode scoreMode, float boost) throws IOException {
+    final Weight indexWeight = indexQuery.createWeight(searcher, scoreMode, boost);
+    final Weight dvWeight = dvQuery.createWeight(searcher, scoreMode, boost);
     return new Weight(this) {
       @Override
       public void extractTerms(Set<Term> terms) {
@@ -169,6 +169,14 @@ public final class IndexOrDocValuesQuery extends Query {
         }
         return scorerSupplier.get(Long.MAX_VALUE);
       }
+
+      @Override
+      public boolean isCacheable(LeafReaderContext ctx) {
+        // Both index and dv query should return the same values, so we can use
+        // the index query's cachehelper here
+        return indexWeight.isCacheable(ctx);
+      }
+
     };
   }
 

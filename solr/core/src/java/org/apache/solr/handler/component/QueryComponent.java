@@ -1481,8 +1481,8 @@ public class QueryComponent extends SearchComponent
     }
 
     @Override
-    public int freq() throws IOException {
-      throw new UnsupportedOperationException();
+    public float maxScore() {
+      return Float.POSITIVE_INFINITY;
     }
 
     @Override
